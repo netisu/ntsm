@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -169,12 +168,12 @@ func processFiles(files []string, srcDir, dstDir string, concurrency int, dryRun
 					fmt.Printf("[worker] Converting %s → %s\n", relPath, dstPath)
 				}
 
-				if err := convertToNTSM(file, dstPath, dryRun); err != nil {
+				if err := convertToNTSM(file, dstPath, dryRun, verbose); err != nil {
 					counter.Lock()
 					counter.failed++
 					counter.Unlock()
 					if verbose {
-						fmt.Printf("Failed: %s\n", err)
+						fmt.Printf("Failed: %v\n", err)
 					}
 				} else {
 					counter.Lock()
@@ -192,7 +191,7 @@ func processFiles(files []string, srcDir, dstDir string, concurrency int, dryRun
 	return counter.success, counter.failed
 }
 
-func convertToNTSM(srcPath, dstPath string, dryRun bool) error {
+func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 	srcData, err := os.ReadFile(srcPath)
 	if err != nil {
 		return fmt.Errorf("[worker] read failed: %w", err)
