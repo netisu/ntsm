@@ -13,29 +13,25 @@ NTSM (Netisu Scene Mesh) a binary file format designed for storing 3D models wit
 
 ## File Structure
 
-┌─────────────────────────────────┐
-│ NTSM Header │ (192 bytes fixed)
-├─────────────────────────────────┤
-│ Magic: "NTSM" (4 bytes) │
-│ Version: uint32 (4 bytes) │
-│ Name: char[128] │
-│ Flags: uint8 (bitfield) │
-│ Reserved: [3] bytes │
-│ GLB Offset: uint32 │
-│ GLB Size: uint32 │
-│ Particle Offset: uint32 │
-│ Particle Size: uint32 │
-│ Texture Count: uint32 │
-│ Texture Table Offset: uint32 │
-└─────────────────────────────────┘
-│ [Padding to alignment] │
-├─────────────────────────────────┤
-│ Embedded glTF Binary (.glb) │ (variable, at glbOffset)
-├─────────────────────────────────┤
-│ Particle System Data │ (variable, at particleOffset)
-├─────────────────────────────────┤
-│ Embedded Particle Textures │ (optional, referenced by table)
-└─────────────────────────────────┘
+| NTSM Header | (192 bytes fixed) |
+|--------|------|------|-------------|
+| Magic: "NTSM" | (4 bytes) |
+| Version: uint32 | (4 bytes) |
+| Name: char[128] | (null-padded) |
+| Flags: uint8 | (bitfield) |
+| Reserved: [3] bytes | (padding) |
+| GLB Offset: uint32 | (offset to GLB data) |
+| GLB Size: uint32 | (size of GLB data) |
+| Particle Offset: uint32 | (offset to particle data) |
+| Particle Size: uint32 | (size of particle data) |
+| Texture Count: uint32 | (number of embedded textures) |
+| Texture Table Offset: uint32 | (offset to texture table) |    
+
+|[Padding to alignment] |
+|--------|------|------|-------------|
+| Embedded glTF Binary (.glb) | (variable, at glbOffset) |
+| Particle System Data | (variable, at particleOffset) |
+| Embedded Particle Textures | (optional, referenced by table) |
 
 ## Header Details (192 bytes total)
 
