@@ -14,7 +14,7 @@ NTSM (Netisu Scene Mesh) a binary file format designed for storing 3D models wit
 ## File Structure
 
 | NTSM Header | (192 bytes fixed) |
-|--------|------|------|-------------|
+|-------------|-------------------|
 | Magic: "NTSM" | (4 bytes) |
 | Version: uint32 | (4 bytes) |
 | Name: char[128] | (null-padded) |
@@ -27,8 +27,10 @@ NTSM (Netisu Scene Mesh) a binary file format designed for storing 3D models wit
 | Texture Count: uint32 | (number of embedded textures) |
 | Texture Table Offset: uint32 | (offset to texture table) |    
 
-|[Padding to alignment] |
-|--------|------|------|-------------|
+## Sections
+
+|[Padding to alignment] | Offsets |
+|-----------------------|---------|
 | Embedded glTF Binary (.glb) | (variable, at glbOffset) |
 | Particle System Data | (variable, at particleOffset) |
 | Embedded Particle Textures | (optional, referenced by table) |
