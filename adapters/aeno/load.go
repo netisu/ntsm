@@ -9,8 +9,10 @@ import (
 )
 
 type LoadedObject struct {
-	*aeno.Object
+	Object *aeno.Object
 	Emitters []ntsm.ParticleEmitter
+	Name     string
+	GLBData []byte
 }
 
 // LoadObject decodes an NTSM stream into an aeno object
@@ -19,6 +21,9 @@ func LoadObject(r io.Reader) (*LoadedObject, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	itemName := string(hdr.Name[:])
+	itemName = itemName[:len(itemName)-1]
 
 	mesh, err := aeno.LoadGLTFFromReader(bytes.NewReader(glbData))
 	if err != nil {
@@ -32,5 +37,7 @@ func LoadObject(r io.Reader) (*LoadedObject, error) {
 			Matrix: aeno.Identity(),
 		},
 		Emitters: emitters,
+		Name:     itemName,
+		GLBData: glbData,
 	}, nil
 }

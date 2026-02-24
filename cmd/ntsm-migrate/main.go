@@ -2,19 +2,16 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/netisu/aeno"
 )
 
 const (
@@ -64,6 +61,11 @@ func main() {
 	verbose := flag.Bool("verbose", false, "Enable verbose logging")
 	confirm := flag.Bool("yes", false, "Skip confirmation prompt")
 	flag.Parse()
+
+	// Check if obj2gltf is installed
+	if _, err := exec.LookPath("obj2gltf"); err != nil {
+		log.Fatalf("obj2gltf is not installed. Please install it with: bun install -g obj2gltf")
+	}
 
 	srcInfo, err := os.Stat(*srcDir)
 	if err != nil || !srcInfo.IsDir() {
@@ -192,38 +194,48 @@ func processFiles(files []string, srcDir, dstDir string, concurrency int, dryRun
 }
 
 func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
-	srcData, err := os.ReadFile(srcPath)
-	if err != nil {
-		return fmt.Errorf("[worker] read failed: %w", err)
-	}
-
 	var glbData []byte
+	var err error
+
 	if strings.HasSuffix(srcPath, ".obj") {
 		if verbose {
 			fmt.Printf("[worker] Converting .obj to GLB: %s\n", srcPath)
 		}
-		mesh, err := aeno.LoadOBJFromReader(bytes.NewReader(srcData))
-		if err != nil {
-			return fmt.Errorf("[worker] obj parse failed: %w", err)
+
+		tempGLBPath := srcPath + ".temp.glb"
+
+		cmd := exec.Command("obj2gltf", "-i", srcPath, "-o", tempGLBPath)
+		if verbose {
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
 		}
 
-		var buf bytes.Buffer
-		if err := saveGLBFromMesh(&buf, mesh); err != nil {
-			return fmt.Errorf("[worker] glb export failed: %w", err)
+		if err = cmd.Run(); err != nil {
+			return fmt.Errorf("[worker] obj2gltf conversion failed: %w", err)
 		}
-		glbData = buf.Bytes()
+
+		glbData, err = os.ReadFile(tempGLBPath)
+		if err != nil {
+			return fmt.Errorf("[worker] failed to read converted GLB: %w", err)
+		}
+
+		if !dryRun && !verbose {
+			os.Remove(tempGLBPath)
+		}
 	} else {
-		glbData = srcData
+		glbData, err = os.ReadFile(srcPath)
+		if err != nil {
+			return fmt.Errorf("[worker] read failed: %w", err)
+		}
 	}
 
 	header := createHeader(srcPath, glbData)
 
 	if dryRun {
-		return nil // Skip writing
+		return nil
 	}
 
-	// Write NTSM file
-	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return fmt.Errorf("[worker] mkdir failed: %w", err)
 	}
 
@@ -233,23 +245,22 @@ func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 	}
 	defer out.Close()
 
-	if err := binary.Write(out, binary.LittleEndian, header); err != nil {
+	if err = binary.Write(out, binary.LittleEndian, header); err != nil {
 		return fmt.Errorf("[worker] header write failed: %w", err)
 	}
 
 	padding := make([]byte, HeaderSize-192)
-	if _, err := out.Write(padding); err != nil {
+	if _, err = out.Write(padding); err != nil {
 		return fmt.Errorf("[worker] padding write failed: %w", err)
 	}
 
-	if _, err := out.Write(glbData); err != nil {
+	if _, err = out.Write(glbData); err != nil {
 		return fmt.Errorf("[worker] glb write failed: %w", err)
 	}
 
 	return nil
 }
 
-// createHeader builds the NTSM header for a given asset
 func createHeader(srcPath string, glbData []byte) NTSMHeader {
 	base := filepath.Base(srcPath)
 	itemID := strings.TrimSuffix(base, filepath.Ext(base))
@@ -274,21 +285,4 @@ func createHeader(srcPath string, glbData []byte) NTSMHeader {
 	copy(header.Name[:], name)
 
 	return header
-}
-
-func saveGLBFromMesh(w io.Writer, mesh *aeno.Mesh) error {
-	obj := &aeno.Object{
-		Mesh:   mesh,
-		Matrix: aeno.Identity(),
-	}
-
-	var buf bytes.Buffer
-	if err := aeno.GenerateSceneToWriter(&buf, []*aeno.Object{obj},
-		aeno.V(0, 0, 2), aeno.V(0, 0, 0), aeno.V(0, 1, 0),
-		45, 512, 1, aeno.V(-1, 1, 1), "#ffffff", "#ffffff", 0.1, 100, true); err != nil {
-		return err
-	}
-
-	_, err := w.Write(buf.Bytes())
-	return err
 }

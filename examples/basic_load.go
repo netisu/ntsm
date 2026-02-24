@@ -5,9 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/netisu/aeno"
-	"github.com/netisu/ntsm"
-	"github.com/netisu/ntsm/adapters/aeno"
+	aenoAdapter "github.com/netisu/ntsm/adapters/aeno"
 )
 
 func main() {
@@ -23,7 +21,7 @@ func main() {
 	}
 	defer f.Close()
 
-	loaded, err := aeno.LoadObject(f)
+	loaded, err := aenoAdapter.LoadObject(f)
 	if err != nil {
 		log.Fatalf("Failed to load NTSM: %v", err)
 	}
@@ -34,7 +32,7 @@ func main() {
 	fmt.Printf("GLB size: %d bytes\n", len(loaded.GLBData))
 
 	if loaded.Object != nil && loaded.Object.Mesh != nil {
-		fmt.Printf("Mesh has %d vertices\n", len(loaded.Object.Mesh.Vertices))
+		fmt.Printf("Mesh has %d lines\n", len(loaded.Object.Mesh.Lines))
 		fmt.Printf("Mesh has %d triangles\n", len(loaded.Object.Mesh.Triangles))
 	} else {
 		fmt.Println("No mesh data found")
