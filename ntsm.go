@@ -16,10 +16,14 @@ type Header struct {
 	Version        uint32
 	Name           [128]byte
 	Flags          uint8
+	_              [3]byte // Padding
 	GLBOffset      uint32
 	GLBSize        uint32
 	ParticleOffset uint32
 	ParticleSize   uint32
+	TextureCount   uint32
+	TextureOffset  uint32
+	_              [28]byte // Padding
 }
 
 type ParticleEmitter struct {
@@ -48,8 +52,6 @@ func Decode(r io.Reader) (*Header, []byte, []ParticleEmitter, error) {
 		return nil, nil, nil, err
 	}
 
-	padding := make([]byte, HeaderSize-192)
-	io.ReadFull(r, padding)
 	glbData := make([]byte, hdr.GLBSize)
 	if _, err := io.ReadFull(r, glbData); err != nil {
 		return nil, nil, nil, err

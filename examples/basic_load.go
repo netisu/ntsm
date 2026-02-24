@@ -21,6 +21,22 @@ func main() {
 	}
 	defer f.Close()
 
+	fileInfo, err := f.Stat()
+	if err != nil {
+		log.Fatalf("Failed to get file info: %v", err)
+	}
+	fmt.Printf("File size: %d bytes\n", fileInfo.Size())
+
+	header := make([]byte, 4)
+	f.ReadAt(header, 0)
+	fmt.Printf("Header magic: %q (should be \"NTSM\")\n", string(header))
+
+	glbCheck := make([]byte, 4)
+	f.ReadAt(glbCheck, 192)
+	fmt.Printf("GLB section start: %q (should be \"glTF\")\n", string(glbCheck))
+
+	f.Seek(0, 0)
+
 	loaded, err := aenoAdapter.LoadObject(f)
 	if err != nil {
 		log.Fatalf("Failed to load NTSM: %v", err)
@@ -37,4 +53,6 @@ func main() {
 	} else {
 		fmt.Println("No mesh data found")
 	}
+	
+	fmt.Printf("Contains %d particle emitters\n", len(loaded.Emitters))
 }

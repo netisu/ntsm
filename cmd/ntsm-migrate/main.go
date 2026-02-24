@@ -23,14 +23,15 @@ type NTSMHeader struct {
 	Magic          [4]byte // "NTSM"
 	Version        uint32  // Format version (1)
 	Name           [128]byte
-	Flags          uint8   // Bitfield: bit 0 = has_particles
-	_              [3]byte // Padding
-	GLBOffset      uint32  // Offset to GLB data
-	GLBSize        uint32  // Size of GLB data
-	ParticleOffset uint32  // Offset to particle data
-	ParticleSize   uint32  // Size of particle data
-	TextureCount   uint32  // Number of embedded textures
-	TextureOffset  uint32  // Offset to texture table
+	Flags          uint8    // Bitfield: bit 0 = has_particles
+	_              [3]byte  // Padding
+	GLBOffset      uint32   // Offset to GLB data
+	GLBSize        uint32   // Size of GLB data
+	ParticleOffset uint32   // Offset to particle data
+	ParticleSize   uint32   // Size of particle data
+	TextureCount   uint32   // Number of embedded textures
+	TextureOffset  uint32   // Offset to texture table
+	_              [28]byte // Padding
 }
 
 // ParticleEmitter represents a single particle system configuration
@@ -204,7 +205,7 @@ func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 
 		tempGLBPath := srcPath + ".temp.glb"
 
-		cmd := exec.Command("obj2gltf", "-i", srcPath, "-o", tempGLBPath)
+		cmd := exec.Command("obj2gltf", "-b", "-i", srcPath, "-o", tempGLBPath)
 		if verbose {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -217,6 +218,10 @@ func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 		glbData, err = os.ReadFile(tempGLBPath)
 		if err != nil {
 			return fmt.Errorf("[worker] failed to read converted GLB: %w", err)
+		}
+
+		if len(glbData) < 4 || string(glbData[0:4]) != "glTF" {
+			return fmt.Errorf("[worker] converted file is not a valid GLB file")
 		}
 
 		if !dryRun && !verbose {
@@ -247,11 +252,6 @@ func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 
 	if err = binary.Write(out, binary.LittleEndian, header); err != nil {
 		return fmt.Errorf("[worker] header write failed: %w", err)
-	}
-
-	padding := make([]byte, HeaderSize-192)
-	if _, err = out.Write(padding); err != nil {
-		return fmt.Errorf("[worker] padding write failed: %w", err)
 	}
 
 	if _, err = out.Write(glbData); err != nil {
