@@ -1,9 +1,10 @@
 package ntsm
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
-	"bytes"
+	"fmt"
 )
 
 const (
@@ -72,8 +73,8 @@ type Texture struct {
 // TextureTableEntry defines how textures are located in the binary
 type TextureTableEntry struct {
 	Name   [64]byte
-	Offset uint32
 	Size   uint32
+	Offset uint32
 }
 
 // Decode reads an NTSM file and returns header, GLB bytes, and emitters
@@ -95,7 +96,7 @@ func Decode(r io.ReadSeeker) (*Header, []byte, []ParticleEmitter, []Script, []Te
 	var emitters []ParticleEmitter
 	if hdr.ParticleSize > 0 {
 		_, _ = r.Seek(int64(hdr.ParticleOffset), io.SeekStart)
-		emitterCount := hdr.ParticleSize / 128
+		emitterCount := hdr.ParticleSize / uint32(binary.Size(ParticleEmitter{}))
 		emitters = make([]ParticleEmitter, emitterCount)
 		binary.Read(r, binary.LittleEndian, &emitters)
 	}
@@ -115,20 +116,35 @@ func Decode(r io.ReadSeeker) (*Header, []byte, []ParticleEmitter, []Script, []Te
 		}
 	}
 
-	var textures []Texture
-	if hdr.TextureCount > 0 {
-		_, _ = r.Seek(int64(hdr.TextureOffset), io.SeekStart)
-		texTable := make([]TextureTableEntry, hdr.TextureCount)
-		binary.Read(r, binary.LittleEndian, &texTable)
+	table := make([]TextureTableEntry, hdr.TextureCount)
+	_, err = r.Seek(int64(hdr.TextureOffset), io.SeekStart)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	if err := binary.Read(r, binary.LittleEndian, &table); err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
 
-		for _, entry := range texTable {
-			_, _ = r.Seek(int64(entry.Offset), io.SeekStart)
-			texData := make([]byte, entry.Size)
-			io.ReadFull(r, texData)
-			nameStr := string(bytes.TrimRight(entry.Name[:], "\x00"))
-			textures = append(textures, Texture{Name: nameStr, Data: texData})
+	textures := make([]Texture, hdr.TextureCount)
+	for i, entry := range table {
+		_, err = r.Seek(int64(entry.Offset), io.SeekStart)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+
+		data := make([]byte, entry.Size)
+		if _, err := io.ReadFull(r, data); err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+
+		nameStr := string(bytes.TrimRight(entry.Name[:], "\x00"))
+		textures[i] = Texture{
+			Name: nameStr,
+			Data: data,
 		}
 	}
+
+	fmt.Printf("Seeking to TextureOffset: %d\n", hdr.TextureOffset)
 
 	return &hdr, glbData, emitters, scripts, textures, nil
 }

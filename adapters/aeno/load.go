@@ -3,9 +3,9 @@ package aeno
 import (
 	"bytes"
 	"io"
-	"os"
-	"path/filepath"
-
+	"fmt"
+	_ "image/jpeg" 
+	_ "image/png"
 	"github.com/netisu/aeno"
 	"github.com/netisu/ntsm"
 )
@@ -21,7 +21,7 @@ type LoadedObject struct {
 
 // LoadObject decodes an NTSM stream into an aeno object
 func LoadObject(r io.ReadSeeker) (*LoadedObject, error) {
-	_, glbData, emitters, _, textures, err := ntsm.Decode(r)
+	hdr, glbData, emitters, _, textures, err := ntsm.Decode(r)
 	if err != nil {
 		return nil, err
 	}
@@ -34,19 +34,22 @@ func LoadObject(r io.ReadSeeker) (*LoadedObject, error) {
 	loaded := &LoadedObject{
 		Object: &aeno.Object{
 			Mesh:   mesh,
-			Color:  aeno.Transparent,
+			Color:  aeno.White,
 			Matrix: aeno.Identity(),
 		},
 		Emitters: emitters,
+		Name:     string(hdr.Name[:]),
+		GLBData:  glbData,
+		Textures: make([]aeno.Texture, 0),
 	}
 
-	for _, texData := range textures {
-		tmpPath := filepath.Join(os.TempDir(), texData.Name)
-		if err := os.WriteFile(tmpPath, texData.Data, 0644); err == nil {
-			tex := aeno.LoadTextureFromURL(tmpPath)
+	for i, t := range textures {
+		tex := aeno.TexFromBytes(t.Data)
+		if tex != nil {
 			loaded.Textures = append(loaded.Textures, tex)
-			// Clean up the temp file after loading it into memory
-			os.Remove(tmpPath)
+			fmt.Printf("Successfully loaded texture %d: %s\n", i, t.Name)
+		} else {
+			fmt.Printf("FAILED to load texture %d: %s (Check if data is valid PNG/JPG)\n", i, t.Name)
 		}
 	}
 
@@ -55,7 +58,9 @@ func LoadObject(r io.ReadSeeker) (*LoadedObject, error) {
 	}
 
 	if len(emitters) > 0 {
-		loaded.ParticleSystem = NewCPUParticleSystem(emitters)
+		ps := NewCPUParticleSystem(emitters)
+		ps.SetTextures(loaded.Textures)
+		loaded.ParticleSystem = ps
 	}
 
 	return loaded, nil

@@ -53,6 +53,11 @@ func main() {
 	} else {
 		fmt.Println("No mesh data found")
 	}
+
+	fmt.Printf("Embedded textures: %d\n", len(loaded.Textures))
+	for i, _ := range loaded.Textures {
+		fmt.Printf("  [%d] Loaded embedded texture\n", i)
+	}
 	
 	fmt.Printf("Contains %d particle emitters\n", len(loaded.Emitters))
 }

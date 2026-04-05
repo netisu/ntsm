@@ -5,56 +5,41 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"github.com/netisu/ntsm"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
-	HeaderSize = 192 // Fixed header size in bytes
+	HeaderSize       = 192
+	TextureEntrySize = 72
 )
 
-// NTSMHeader represents the binary header of the NTSM file format
 type NTSMHeader struct {
-	Magic          [4]byte // "NTSM"
-	Version        uint32  // Format version (1)
+	Magic          [4]byte
+	Version        uint32
 	Name           [128]byte
-	Flags          uint8    // Bitfield: bit 0 = has_particles
-	_              [3]byte  // Padding
-	GLBOffset      uint32   // Offset to GLB data
-	GLBSize        uint32   // Size of GLB data
-	ParticleOffset uint32   // Offset to particle data
-	ParticleSize   uint32   // Size of particle data
-	TextureCount   uint32   // Number of embedded textures
-	TextureOffset  uint32   // Offset to texture table
-	_              [28]byte // Padding
+	Flags          uint8
+	_              [3]byte
+	GLBOffset      uint32
+	GLBSize        uint32
+	ParticleOffset uint32
+	ParticleSize   uint32
+	TextureCount   uint32
+	TextureOffset  uint32
+	ScriptCount    uint32
+	ScriptOffset   uint32
+	_              [20]byte
 }
 
-// ParticleEmitter represents a single particle system configuration
-type ParticleEmitter struct {
-	Position         [3]float32
-	Direction        [3]float32
-	SpreadAngle      float32
-	EmissionRate     float32
-	ParticleLifetime float32
-	StartSize        float32
-	EndSize          float32
-	StartColor       [4]float32
-	EndColor         [4]float32
-	VelocityMin      [3]float32
-	VelocityMax      [3]float32
-	Gravity          float32
-	TextureIndex     int32
-	BlendMode        uint8
-	Loop             uint8
-	_                [2]byte
-	
-	MaxParticles     uint32
-	SpawnCount       uint32
+type TextureTableEntry struct {
+	Name   [64]byte
+	Size   uint32
+	Offset uint32
 }
 
 func main() {
@@ -66,18 +51,8 @@ func main() {
 	confirm := flag.Bool("yes", false, "Skip confirmation prompt")
 	flag.Parse()
 
-	// Check if obj2gltf is installed
 	if _, err := exec.LookPath("obj2gltf"); err != nil {
 		log.Fatalf("obj2gltf is not installed. Please install it with: bun install -g obj2gltf")
-	}
-
-	srcInfo, err := os.Stat(*srcDir)
-	if err != nil || !srcInfo.IsDir() {
-		log.Fatalf("Source directory does not exist: %s", *srcDir)
-	}
-
-	if err := os.MkdirAll(*dstDir, 0755); err != nil {
-		log.Fatalf("Failed to create destination directory: %v", err)
 	}
 
 	files, err := findSourceFiles(*srcDir)
@@ -85,56 +60,22 @@ func main() {
 		log.Fatalf("Failed to scan source directory: %v", err)
 	}
 
-	if len(files) == 0 {
-		log.Fatalf("No .obj or .glb files found in %s", *srcDir)
-	}
-
-	fmt.Printf("Found %d assets to convert:\n", len(files))
-	for i, f := range files {
-		if i < 10 || i >= len(files)-5 {
-			fmt.Printf("  %s\n", f)
-		} else if i == 10 {
-			fmt.Printf("  ...\n")
-		}
-	}
-	fmt.Printf("\nSource: %s\n", *srcDir)
-	fmt.Printf("Destination: %s\n", *dstDir)
-	fmt.Printf("Concurrency: %d workers\n", *concurrency)
-	if *dryRun {
-		fmt.Println("Mode: DRY RUN (no files will be written)")
-	}
-
 	if !*confirm {
-		fmt.Print("\nProceed with migration? [y/N] ")
+		fmt.Printf("Found %d assets. Proceed? [y/N] ", len(files))
 		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
-		if input != "y" && input != "yes" {
-			fmt.Println("Migration aborted.")
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(input)), "y") {
 			os.Exit(0)
 		}
 	}
 
-	start := time.Now()
 	success, failed := processFiles(files, *srcDir, *dstDir, *concurrency, *dryRun, *verbose)
-
-	duration := time.Since(start).Truncate(time.Millisecond)
-	fmt.Printf("\nMigration completed in %v\n", duration)
-	fmt.Printf("✓ Successfully converted: %d\n", success)
-	fmt.Printf("✗ Failed: %d\n", failed)
-
-	if failed > 0 && !*dryRun {
-		fmt.Println("\nTip: Check logs for details on failed conversions.")
-		fmt.Println("You can retry individual files with: ntsm-migrate -src <file> -dst <file.ntsm>")
-	}
+	fmt.Printf("\nCompleted: %d success, %d failed\n", success, failed)
 }
 
 func findSourceFiles(dir string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
 		if !info.IsDir() && (strings.HasSuffix(path, ".obj") || strings.HasSuffix(path, ".glb")) {
 			files = append(files, path)
 		}
@@ -143,19 +84,14 @@ func findSourceFiles(dir string) ([]string, error) {
 	return files, err
 }
 
-// processFiles converts multiple files with concurrency control
 func processFiles(files []string, srcDir, dstDir string, concurrency int, dryRun, verbose bool) (int, int) {
-	var (
-		wg      sync.WaitGroup
-		counter struct {
-			sync.Mutex
-			success, failed int
-		}
-	)
+	var wg sync.WaitGroup
+	var success, failed int
+	var mu sync.Mutex
 
 	tasks := make(chan string, len(files))
-	for _, file := range files {
-		tasks <- file
+	for _, f := range files {
+		tasks <- f
 	}
 	close(tasks)
 
@@ -163,38 +99,25 @@ func processFiles(files []string, srcDir, dstDir string, concurrency int, dryRun
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for file := range tasks {
-				relPath, err := filepath.Rel(srcDir, file)
-				if err != nil {
-					relPath = file
-				}
-				dstPath := filepath.Join(dstDir, strings.TrimSuffix(relPath, filepath.Ext(relPath))+".ntsm")
+			for src := range tasks {
+				rel, _ := filepath.Rel(srcDir, src)
+				dst := filepath.Join(dstDir, strings.TrimSuffix(rel, filepath.Ext(rel))+".ntsm")
 
-				if verbose {
-					fmt.Printf("[worker] Converting %s → %s\n", relPath, dstPath)
-				}
-
-				if err := convertToNTSM(file, dstPath, dryRun, verbose); err != nil {
-					counter.Lock()
-					counter.failed++
-					counter.Unlock()
-					if verbose {
-						fmt.Printf("Failed: %v\n", err)
-					}
+				if err := convertToNTSM(src, dst, dryRun, verbose); err != nil {
+					mu.Lock()
+					failed++
+					mu.Unlock()
+					fmt.Printf("Error %s: %v\n", src, err)
 				} else {
-					counter.Lock()
-					counter.success++
-					counter.Unlock()
-					if verbose {
-						fmt.Printf("Converted: %s\n", relPath)
-					}
+					mu.Lock()
+					success++
+					mu.Unlock()
 				}
 			}
 		}()
 	}
-
 	wg.Wait()
-	return counter.success, counter.failed
+	return success, failed
 }
 
 func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
@@ -202,90 +125,106 @@ func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 	var err error
 
 	if strings.HasSuffix(srcPath, ".obj") {
-		if verbose {
-			fmt.Printf("[worker] Converting .obj to GLB: %s\n", srcPath)
-		}
-
-		tempGLBPath := srcPath + ".temp.glb"
-
-		cmd := exec.Command("obj2gltf", "-b", "-i", srcPath, "-o", tempGLBPath)
-		if verbose {
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-		}
-
+		tempGLB := srcPath + ".temp.glb"
+		cmd := exec.Command("obj2gltf", "-b", "-i", srcPath, "-o", tempGLB)
 		if err = cmd.Run(); err != nil {
-			return fmt.Errorf("[worker] obj2gltf conversion failed: %w", err)
+			return err
 		}
-
-		glbData, err = os.ReadFile(tempGLBPath)
-		if err != nil {
-			return fmt.Errorf("[worker] failed to read converted GLB: %w", err)
-		}
-
-		if len(glbData) < 4 || string(glbData[0:4]) != "glTF" {
-			return fmt.Errorf("[worker] converted file is not a valid GLB file")
-		}
-
-		if !dryRun && !verbose {
-			os.Remove(tempGLBPath)
-		}
+		glbData, _ = os.ReadFile(tempGLB)
+		os.Remove(tempGLB)
 	} else {
-		glbData, err = os.ReadFile(srcPath)
-		if err != nil {
-			return fmt.Errorf("[worker] read failed: %w", err)
-		}
+		glbData, _ = os.ReadFile(srcPath)
 	}
 
-	header := createHeader(srcPath, glbData)
+	var textures [][]byte
+	var entries []TextureTableEntry
 
-	if dryRun {
-		return nil
+	modelTexPath := strings.TrimSuffix(srcPath, filepath.Ext(srcPath)) + ".png"
+	if data, err := os.ReadFile(modelTexPath); err == nil {
+		textures = append(textures, data)
+		var entry TextureTableEntry
+		copy(entry.Name[:], []byte(filepath.Base(modelTexPath)))
+		entries = append(entries, entry)
 	}
 
-	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-		return fmt.Errorf("[worker] mkdir failed: %w", err)
+	sparklePath := filepath.Join(filepath.Dir(srcPath), "sparkle.png")
+	sparkleIndex := -1
+	if data, err := os.ReadFile(sparklePath); err == nil {
+		sparkleIndex = len(textures)
+		textures = append(textures, data)
+		var entry TextureTableEntry
+		copy(entry.Name[:], []byte("sparkle.png"))
+		entries = append(entries, entry)
 	}
 
-	out, err := os.Create(dstPath)
-	if err != nil {
-		return fmt.Errorf("[worker] create failed: %w", err)
+	var emitters []ntsm.ParticleEmitter
+	if sparkleIndex != -1 {
+		emitters = append(emitters, ntsm.ParticleEmitter{
+			Position:         [3]float32{0, 1.5, 0},
+			Direction:        [3]float32{0, 1, 0},
+			SpreadAngle:      6.28,
+			EmissionRate:     30,
+			ParticleLifetime: 1.3,
+			StartSize:        0.37,
+			EndSize:          0.37,
+			StartColor:       [4]float32{1, 1, 0.8, 1}, // Pale yellow
+			EndColor:         [4]float32{1, 0.5, 0, 0}, // Fading orange
+			TextureIndex:     int32(sparkleIndex),
+			MaxParticles:     100,
+			SpawnCount:       1,
+			BlendMode:        0,
+			Loop:             0,
+			VelocityMin:      [3]float32{0, 0, 0},
+			VelocityMax:      [3]float32{0, 0, 0},
+		})
 	}
+
+	h := NTSMHeader{
+		Magic:     [4]byte{'N', 'T', 'S', 'M'},
+		Version:   1,
+		GLBOffset: HeaderSize,
+		GLBSize:   uint32(len(glbData)),
+	}
+
+	h.ParticleOffset = h.GLBOffset + h.GLBSize
+	emitterSize := 0
+	if len(emitters) > 0 {
+		emitterSize = binary.Size(emitters[0])
+	}
+	h.ParticleSize = uint32(len(emitters) * emitterSize)
+
+	h.ScriptCount = 0
+	h.ScriptOffset = h.ParticleOffset + h.ParticleSize
+
+	h.TextureCount = uint32(len(textures))
+	h.TextureOffset = h.ScriptOffset
+
+	tableSize := h.TextureCount * TextureEntrySize
+	currentDataOffset := h.TextureOffset + tableSize
+
+	for i := range entries {
+		entries[i].Size = uint32(len(textures[i]))
+		entries[i].Offset = currentDataOffset
+		currentDataOffset += entries[i].Size
+	}
+
+	out, _ := os.Create(dstPath)
 	defer out.Close()
 
-	if err = binary.Write(out, binary.LittleEndian, header); err != nil {
-		return fmt.Errorf("[worker] header write failed: %w", err)
+	binary.Write(out, binary.LittleEndian, h)
+	out.Write(glbData)
+
+	for _, e := range emitters {
+		binary.Write(out, binary.LittleEndian, e)
 	}
 
-	if _, err = out.Write(glbData); err != nil {
-		return fmt.Errorf("[worker] glb write failed: %w", err)
+	for _, entry := range entries {
+		binary.Write(out, binary.LittleEndian, entry)
+	}
+
+	for _, texData := range textures {
+		out.Write(texData)
 	}
 
 	return nil
-}
-
-func createHeader(srcPath string, glbData []byte) NTSMHeader {
-	base := filepath.Base(srcPath)
-	itemID := strings.TrimSuffix(base, filepath.Ext(base))
-
-	header := NTSMHeader{
-		Version:        1,
-		GLBOffset:      HeaderSize,
-		GLBSize:        uint32(len(glbData)),
-		ParticleOffset: HeaderSize + uint32(len(glbData)),
-		ParticleSize:   0,
-		TextureCount:   0,
-		TextureOffset:  0,
-		Flags:          0,
-	}
-
-	copy(header.Magic[:], []byte("NTSM"))
-
-	name := []byte(itemID)
-	if len(name) > 127 {
-		name = name[:127]
-	}
-	copy(header.Name[:], name)
-
-	return header
 }
