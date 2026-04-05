@@ -52,6 +52,9 @@ type ParticleEmitter struct {
 	BlendMode        uint8
 	Loop             uint8
 	_                [2]byte
+	
+	MaxParticles     uint32
+	SpawnCount       uint32
 }
 
 func main() {
