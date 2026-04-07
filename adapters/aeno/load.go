@@ -6,7 +6,7 @@ import (
 	"fmt"
 	_ "image/jpeg" 
 	_ "image/png"
-	"github.com/netisu/aeno"
+	"aeno"
 	"github.com/netisu/ntsm"
 )
 
@@ -26,7 +26,7 @@ func LoadObject(r io.ReadSeeker) (*LoadedObject, error) {
 		return nil, err
 	}
 
-	mesh, err := aeno.LoadGLTFFromReader(bytes.NewReader(glbData))
+	mesh, rootMatrix, err := aeno.LoadGLTFFromReader(bytes.NewReader(glbData))
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func LoadObject(r io.ReadSeeker) (*LoadedObject, error) {
 		Object: &aeno.Object{
 			Mesh:   mesh,
 			Color:  aeno.White,
-			Matrix: aeno.Identity(),
+			Matrix: rootMatrix,
 		},
 		Emitters: emitters,
 		Name:     string(hdr.Name[:]),

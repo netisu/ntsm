@@ -3,8 +3,8 @@ package ntsm
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"fmt"
+	"io"
 )
 
 const (
@@ -50,6 +50,7 @@ type ParticleEmitter struct {
 
 	MaxParticles uint32
 	SpawnCount   uint32
+	Reserved     [8]byte // Padding to reach 128 bytes exactly
 }
 
 // Script represents a decoded Luau script

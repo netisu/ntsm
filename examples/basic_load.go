@@ -48,6 +48,11 @@ func main() {
 	fmt.Printf("GLB size: %d bytes\n", len(loaded.GLBData))
 
 	if loaded.Object != nil && loaded.Object.Mesh != nil {
+		fmt.Printf("GLTF Clamped Coordinates (X, Y, Z): [%.3f, %.3f, %.3f]\n", 
+			loaded.Object.Matrix.X03, 
+			loaded.Object.Matrix.X13, 
+			loaded.Object.Matrix.X23)
+			
 		fmt.Printf("Mesh has %d lines\n", len(loaded.Object.Mesh.Lines))
 		fmt.Printf("Mesh has %d triangles\n", len(loaded.Object.Mesh.Triangles))
 	} else {

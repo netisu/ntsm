@@ -6,8 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time" // Added for duration tracking
 
-	"github.com/netisu/aeno"
+	"aeno"
 	aenoAdapter "github.com/netisu/ntsm/adapters/aeno"
 )
 
@@ -49,8 +50,7 @@ func main() {
 	}
 
 	fmt.Printf("Loaded: %s\n", loaded.Name)
-	fmt.Printf("Particles: %d emitters found\n", len(loaded.Emitters))
-
+	
 	var sceneObjects []*aeno.Object
 	
 	if loaded.Object != nil {
@@ -58,19 +58,22 @@ func main() {
 	}
 
 	if *sparkle && loaded.ParticleSystem != nil {
-		fmt.Println("Simulating sparkles...")
+		fmt.Println("Simulating sparkles (3s duration)...")
 		
 		viewMatrix := aeno.LookAt(eye, center, up)
 		deltaTime := 1.0 / 60.0
-		for i := 0; i < 60; i++ {
-			loaded.ParticleSystem.Update(deltaTime, aeno.Identity())
+		
+		modelMat := aeno.Identity()
+		if loaded.Object != nil {
+			modelMat = loaded.Object.Matrix
+		}
+		for i := 0; i < 180; i++ { 
+			loaded.ParticleSystem.Update(deltaTime, modelMat)
 		}
 
 		particleObjs := loaded.ParticleSystem.GetObjects(viewMatrix)
 		fmt.Printf("Generated %d particle instances for render\n", len(particleObjs))
 		sceneObjects = append(sceneObjects, particleObjs...)
-	} else if *sparkle {
-		fmt.Println("Warning: --sparkle requested but no emitters found in file.")
 	}
 
 	fmt.Printf("Rendering scene with %d total objects...\n", len(sceneObjects))
@@ -80,6 +83,8 @@ func main() {
 		log.Fatalf("Failed to create output file: %v", err)
 	}
 	defer out.Close()
+
+	startTime := time.Now()
 
 	err = aeno.GenerateSceneToWriter(
 		out,
@@ -98,10 +103,13 @@ func main() {
 		true,
 	)
 
+	renderDuration := time.Since(startTime)
+
 	if err != nil {
 		log.Fatalf("Render failed: %v", err)
 	}
 
 	absPath, _ := filepath.Abs(*outputPath)
 	fmt.Printf("\nSUCCESS: Render saved to %s\n", absPath)
+	fmt.Printf("Render Time: %v\n", renderDuration)
 }

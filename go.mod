@@ -2,7 +2,7 @@ module github.com/netisu/ntsm
 
 go 1.25.0
 
-require github.com/netisu/aeno v0.1.59
+require github.com/netisu/aeno v0.1.63
 
 require (
 	github.com/beorn7/floats v1.0.0 // indirect

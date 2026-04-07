@@ -4,7 +4,8 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/netisu/aeno"
+	aeno "aeno"
+
 	"github.com/netisu/ntsm"
 )
 
@@ -126,8 +127,16 @@ func (ps *CPUParticleSystem) spawnParticle(emitter ntsm.ParticleEmitter, origin 
 		velocity[2] *= speed / length
 	}
 
+	jitterX := (rand.Float32() - 0.5) * emitter.StartSize * 2.0
+	jitterY := (rand.Float32() - 0.5) * emitter.StartSize * 2.0
+	jitterZ := (rand.Float32() - 0.5) * emitter.StartSize * 2.0
+
 	particle := Particle{
-		Position:     [3]float32{float32(origin.X), float32(origin.Y), float32(origin.Z)},
+		Position: [3]float32{
+			float32(origin.X) + jitterX,
+			float32(origin.Y) + jitterY,
+			float32(origin.Z) + jitterZ,
+		},
 		Velocity:     velocity,
 		Size:         emitter.StartSize,
 		StartSize:    emitter.StartSize,
@@ -143,41 +152,38 @@ func (ps *CPUParticleSystem) spawnParticle(emitter ntsm.ParticleEmitter, origin 
 	ps.particles = append(ps.particles, particle)
 }
 
+var sharedParticleMesh *aeno.Mesh
+
 func (ps *CPUParticleSystem) GetObjects(viewMatrix aeno.Matrix) []*aeno.Object {
+	if sharedParticleMesh == nil {
+		sharedParticleMesh = createUnitSquareMesh(aeno.White)
+	}
 	objects := make([]*aeno.Object, 0, len(ps.particles))
 
 	for _, p := range ps.particles {
-		pColor := aeno.Color{
-			R: float64(p.Color[0]),
-			G: float64(p.Color[1]),
-			B: float64(p.Color[2]),
-			A: float64(p.Color[3]),
-		}
-
+		s := float64(p.Size) * 2.5
 		m := aeno.Identity()
 
-		m.X03 = float64(p.Position[0])
-		m.X13 = float64(p.Position[1])
-		m.X23 = float64(p.Position[2])
+		// Position
+		m.X03, m.X13, m.X23 = float64(p.Position[0]), float64(p.Position[1]), float64(p.Position[2])
 
-		m.X00 = viewMatrix.X00
-		m.X01 = viewMatrix.X10
-		m.X02 = viewMatrix.X20
-		m.X10 = viewMatrix.X01
-		m.X11 = viewMatrix.X11
-		m.X12 = viewMatrix.X21
-		m.X20 = viewMatrix.X02
-		m.X21 = viewMatrix.X12
-		m.X22 = viewMatrix.X22
-
-		s := float64(p.Size)
-		finalMatrix := m.Mul(aeno.Scale(aeno.Vector{X: s, Y: s, Z: 1.0}))
+		// Rotation (Billboard) + Scale (Baked in)
+		m.X00 = viewMatrix.X00 * s
+		m.X01 = viewMatrix.X10 * s
+		m.X02 = viewMatrix.X20 * s
+		m.X10 = viewMatrix.X01 * s
+		m.X11 = viewMatrix.X11 * s
+		m.X12 = viewMatrix.X21 * s
+		m.X20 = viewMatrix.X02 * s
+		m.X21 = viewMatrix.X12 * s
+		m.X22 = viewMatrix.X22 * s
 
 		obj := &aeno.Object{
-			Mesh:           createUnitSquareMesh(pColor),
-			Texture: ps.textures[p.TextureIndex],
+			Mesh:           sharedParticleMesh,
+			Texture:        ps.textures[p.TextureIndex],
+			Color:          aeno.Color{R: float64(p.Color[0]), G: float64(p.Color[1]), B: float64(p.Color[2]), A: float64(p.Color[3])},
 			UseVertexColor: true,
-			Matrix:         finalMatrix,
+			Matrix:         m,
 		}
 
 		objects = append(objects, obj)
@@ -187,16 +193,18 @@ func (ps *CPUParticleSystem) GetObjects(viewMatrix aeno.Matrix) []*aeno.Object {
 
 func createUnitSquareMesh(col aeno.Color) *aeno.Mesh {
 	half := 0.5
+	const maxUV = 0.999
+	n := aeno.Vector{X: 0, Y: 0, Z: 1}
 
-	p0 := aeno.V(-half, -half, 0)
-	p1 := aeno.V(half, -half, 0)
-	p2 := aeno.V(half, half, 0)
-	p3 := aeno.V(-half, half, 0)
+	p0 := aeno.V(-half, 0, 0) // Bottom Left
+	p1 := aeno.V(half, 0, 0)  // Bottom Right
+	p2 := aeno.V(half, 1, 0)  // Top Right
+	p3 := aeno.V(-half, 1, 0) // Top Left
 
-	v0 := aeno.Vertex{Position: p0, Texture: aeno.Vector{X: 0, Y: 1}, Color: col} // Top Left
-	v1 := aeno.Vertex{Position: p1, Texture: aeno.Vector{X: 1, Y: 1}, Color: col} // Top Right
-	v2 := aeno.Vertex{Position: p2, Texture: aeno.Vector{X: 1, Y: 0}, Color: col} // Bottom Right
-	v3 := aeno.Vertex{Position: p3, Texture: aeno.Vector{X: 0, Y: 0}, Color: col} // Bottom Left
+	v0 := aeno.Vertex{Position: p0, Normal: n, Texture: aeno.Vector{X: 0, Y: maxUV}, Color: col}
+	v1 := aeno.Vertex{Position: p1, Normal: n, Texture: aeno.Vector{X: maxUV, Y: maxUV}, Color: col}
+	v2 := aeno.Vertex{Position: p2, Normal: n, Texture: aeno.Vector{X: maxUV, Y: 0}, Color: col}
+	v3 := aeno.Vertex{Position: p3, Normal: n, Texture: aeno.Vector{X: 0, Y: 0}, Color: col}
 
 	return aeno.NewTriangleMesh([]*aeno.Triangle{
 		aeno.NewTriangle(v0, v1, v2),

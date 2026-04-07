@@ -160,22 +160,23 @@ func convertToNTSM(srcPath, dstPath string, dryRun bool, verbose bool) error {
 	var emitters []ntsm.ParticleEmitter
 	if sparkleIndex != -1 {
 		emitters = append(emitters, ntsm.ParticleEmitter{
-			Position:         [3]float32{0, 1.5, 0},
+			Position:         [3]float32{0, 0, 0},
 			Direction:        [3]float32{0, 1, 0},
 			SpreadAngle:      6.28,
 			EmissionRate:     30,
 			ParticleLifetime: 1.3,
 			StartSize:        0.37,
 			EndSize:          0.37,
-			StartColor:       [4]float32{1, 1, 0.8, 1}, // Pale yellow
-			EndColor:         [4]float32{1, 0.5, 0, 0}, // Fading orange
-			TextureIndex:     int32(sparkleIndex),
-			MaxParticles:     100,
-			SpawnCount:       1,
-			BlendMode:        0,
-			Loop:             0,
+			StartColor:       [4]float32{1, 1, 0.8, 1},
+			EndColor:         [4]float32{1, 0.5, 0, 0},
 			VelocityMin:      [3]float32{0, 0, 0},
 			VelocityMax:      [3]float32{0, 0, 0},
+			Gravity:          0,
+			TextureIndex:     int32(sparkleIndex),
+			BlendMode:        0,
+			Loop:             0,
+			MaxParticles:     100,
+			SpawnCount:       1,
 		})
 	}
 
